@@ -229,6 +229,19 @@ def get_param_groups(model, lr_manifold, weight_decay_manifold):
 def select_dataset(args, validation_split=False):
     """ Selects an available dataset and returns PyTorch dataloaders for training, validation and testing. """
 
+    # --- Per-dataset DataLoader performance overrides (tieredImageNet only) ---
+    # All other datasets fall into the `else` branches below and use the
+    # original hardcoded values byte-for-byte. _is_tiered gates BOTH the LMDB
+    # dataset selection (later in this function) and the DataLoader knobs
+    # (at the end of this function).
+    _TIERED_LOADER_OVERRIDES = {
+        'num_workers':        16,
+        'persistent_workers': True,
+        'prefetch_factor':    4,
+        'ra_len_factor':      1,
+    }
+    _is_tiered = (args.dataset == 'tieredImageNet')
+
     if args.dataset == 'CIFAR-10':
         mean = (0.4914, 0.4822, 0.4465)
         std = (0.2470, 0.2435, 0.2616)
@@ -336,9 +349,35 @@ def select_dataset(args, validation_split=False):
             transforms.Normalize(mean=mean, std=std),
         ])
 
-        train_set = datasets.ImageFolder(train_dir, train_transform)
-        val_set   = datasets.ImageFolder(val_dir,   test_transform)
-        test_set  = datasets.ImageFolder(test_dir,  test_transform)
+        # If LMDB files exist locally, use the LMDB-backed dataset to skip
+        # network I/O. Otherwise fall back to ImageFolder (current behavior).
+        _lmdb_root = "/media/hdd/usr/forner/tieredImageNet_lmdb/"
+        _train_lmdb = os.path.join(_lmdb_root, "train.lmdb")
+        _val_lmdb   = os.path.join(_lmdb_root, "val.lmdb")
+        _test_lmdb  = os.path.join(_lmdb_root, "test.lmdb")
+        _use_lmdb = (os.path.isdir(_train_lmdb)
+                     and os.path.isfile(_train_lmdb + ".meta.json")
+                     and os.path.isdir(_val_lmdb)
+                     and os.path.isfile(_val_lmdb + ".meta.json"))
+
+        if _use_lmdb:
+            try:
+                from classification_vit.lmdb_dataset import LMDBImageFolder
+            except ImportError:
+                from lmdb_dataset import LMDBImageFolder
+            train_set = LMDBImageFolder(_train_lmdb, transform=train_transform)
+            val_set   = LMDBImageFolder(_val_lmdb,   transform=test_transform)
+            _has_test_lmdb = (os.path.isdir(_test_lmdb)
+                              and os.path.isfile(_test_lmdb + ".meta.json"))
+            test_set = (LMDBImageFolder(_test_lmdb, transform=test_transform)
+                        if _has_test_lmdb else val_set)
+            print(f"[DATASET] tieredImageNet via LMDB at {_lmdb_root}", flush=True)
+        else:
+            train_set = datasets.ImageFolder(train_dir, train_transform)
+            val_set   = datasets.ImageFolder(val_dir,   test_transform)
+            test_set  = datasets.ImageFolder(test_dir,  test_transform)
+            print(f"[DATASET] tieredImageNet via ImageFolder at {root_dir} "
+                  f"(LMDB not found at {_lmdb_root})", flush=True)
 
         img_dim = [3, 84, 84]
         num_classes = len(train_set.classes)
@@ -373,31 +412,66 @@ def select_dataset(args, validation_split=False):
             f"Selected dataset '{args.dataset}' not available.")
     
     # Dataloader
-    train_loader = DataLoader(train_set,
-        num_workers=4, 
-        pin_memory=True, 
-        batch_sampler=RASampler(len(train_set), 
-            batch_size=args.batch_size, 
-            repetitions=1,
-            len_factor=3,
-            shuffle=True, 
-            drop_last=True
+    if _is_tiered:
+        train_loader = DataLoader(train_set,
+            num_workers=_TIERED_LOADER_OVERRIDES['num_workers'],
+            pin_memory=True,
+            persistent_workers=_TIERED_LOADER_OVERRIDES['persistent_workers'],
+            prefetch_factor=_TIERED_LOADER_OVERRIDES['prefetch_factor'],
+            batch_sampler=RASampler(len(train_set),
+                batch_size=args.batch_size,
+                repetitions=1,
+                len_factor=_TIERED_LOADER_OVERRIDES['ra_len_factor'],
+                shuffle=True,
+                drop_last=True
+            )
         )
-    )
-    test_loader = DataLoader(test_set, 
-        batch_size=args.batch_size_test, 
-        num_workers=4, 
-        pin_memory=True, 
-        shuffle=False
-    ) 
-    
-    if validation_split:
-        val_loader = DataLoader(val_set, 
+    else:
+        train_loader = DataLoader(train_set,
+            num_workers=4, 
+            pin_memory=True, 
+            batch_sampler=RASampler(len(train_set), 
+                batch_size=args.batch_size, 
+                repetitions=1,
+                len_factor=3,
+                shuffle=True, 
+                drop_last=True
+            )
+        )
+    if _is_tiered:
+        test_loader = DataLoader(test_set,
+            batch_size=args.batch_size_test,
+            num_workers=_TIERED_LOADER_OVERRIDES['num_workers'],
+            pin_memory=True,
+            persistent_workers=_TIERED_LOADER_OVERRIDES['persistent_workers'],
+            prefetch_factor=_TIERED_LOADER_OVERRIDES['prefetch_factor'],
+            shuffle=False
+        )
+    else:
+        test_loader = DataLoader(test_set, 
             batch_size=args.batch_size_test, 
             num_workers=4, 
             pin_memory=True, 
             shuffle=False
-        )
+        ) 
+    
+    if validation_split:
+        if _is_tiered:
+            val_loader = DataLoader(val_set,
+                batch_size=args.batch_size_test,
+                num_workers=_TIERED_LOADER_OVERRIDES['num_workers'],
+                pin_memory=True,
+                persistent_workers=_TIERED_LOADER_OVERRIDES['persistent_workers'],
+                prefetch_factor=_TIERED_LOADER_OVERRIDES['prefetch_factor'],
+                shuffle=False
+            )
+        else:
+            val_loader = DataLoader(val_set, 
+                batch_size=args.batch_size_test, 
+                num_workers=4, 
+                pin_memory=True, 
+                shuffle=False
+            )
     else:
         val_loader = test_loader
         
