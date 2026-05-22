@@ -82,8 +82,8 @@ def load_model_checkpoint(model, checkpoint_path):
 def select_model(img_dim, num_classes, args):
     """ Selects and sets up an available model and returns it. """
 
-    if getattr(args, 'use_q_depth_mlp', False) and getattr(args, 'use_cls_depth_residual', False):
-        raise RuntimeError("--use_q_depth_mlp and --use_cls_depth_residual are mutually exclusive.")
+    #if getattr(args, 'use_q_depth_mlp', False) and getattr(args, 'use_cls_depth_residual', False):
+    #    raise RuntimeError("--use_q_depth_mlp and --use_cls_depth_residual are mutually exclusive.")
 
     enc_args = {
         'num_layers' : args.num_layers,
