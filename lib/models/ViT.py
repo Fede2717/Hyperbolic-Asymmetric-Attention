@@ -47,6 +47,7 @@ class ViT(nn.Module):
         B_softplus_temp=4.0,
         use_cls_depth_residual=False,
         use_q_depth_mlp=False,
+        disable_B=False,
     ):
         super(ViT, self).__init__()
         self.manifold = manifold
@@ -83,7 +84,8 @@ class ViT(nn.Module):
             layer = self._get_transformerEncoder(hidden_dim, mlp_dim, self.num_patches, heads, dropout, use_haa=use_haa, beta_init_val=_beta_init, tau_init=tau_init, lambda_init=lambda_init,
                                                  learn_lambda=learn_lambda,
                                                  B_smooth=B_smooth, B_softplus_temp=B_softplus_temp,
-                                                 use_q_depth_mlp=use_q_depth_mlp)
+                                                 use_q_depth_mlp=use_q_depth_mlp,
+                                                 disable_B=disable_B)
             if hasattr(layer, 'mha'):
                 layer.mha.layer_idx = idx
                 layer.mha.max_layer_idx = max_haa_idx
@@ -183,7 +185,7 @@ class ViT(nn.Module):
     def _get_transformerEncoder(self, hidden_dim, mlp_dim, num_patches, heads, dropout, use_haa=False, beta_init_val=None, tau_init=1.0, lambda_init=1.0,
                                 learn_lambda=True,
                                 B_smooth='softplus', B_softplus_temp=4.0,
-                                use_q_depth_mlp=False):
+                                use_q_depth_mlp=False, disable_B=False):
         if self.manifold is None:
             return TransformerEncoder(hidden_dim, mlp_dim, num_patches, heads, dropout)
 
@@ -191,7 +193,8 @@ class ViT(nn.Module):
             return LorentzTransformerEncoder(self.manifold, hidden_dim+1, mlp_dim+1, num_patches, heads, dropout, use_haa=use_haa, beta_init_val=beta_init_val, tau_init=tau_init, lambda_init=lambda_init,
                                               learn_lambda=learn_lambda,
                                               B_smooth=B_smooth, B_softplus_temp=B_softplus_temp,
-                                              use_q_depth_mlp=use_q_depth_mlp)
+                                              use_q_depth_mlp=use_q_depth_mlp,
+                                              disable_B=disable_B)
 
         else:
             raise RuntimeError(f"Manifold {type(self.manifold)} not supported in ViT.")

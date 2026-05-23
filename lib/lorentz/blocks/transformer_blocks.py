@@ -42,7 +42,7 @@ class LorentzTransformerEncoder(nn.Module):
                  stochastic_depth=0.1, use_haa=False, beta_init_val=None,
                  tau_init=1.0, lambda_init=1.0, learn_lambda=True,
                  B_smooth='softplus', B_softplus_temp=4.0,
-                 use_q_depth_mlp=False):
+                 use_q_depth_mlp=False, disable_B: bool = False):
         super(LorentzTransformerEncoder, self).__init__()
 
         self.manifold = manifold
@@ -57,7 +57,8 @@ class LorentzTransformerEncoder(nn.Module):
         self.mha = LorentzMultiHeadAttention(manifold, hidden, num_patches, heads, dropout, use_haa=use_haa, beta_init_val=beta_init_val, tau_init=tau_init, lambda_init=lambda_init,
                                              learn_lambda=learn_lambda,
                                              B_smooth=B_smooth, B_softplus_temp=B_softplus_temp,
-                                             use_q_depth_mlp=use_q_depth_mlp)
+                                             use_q_depth_mlp=use_q_depth_mlp,
+                                             disable_B=disable_B)
         self.ln2 = LorentzLayerNorm(manifold, hidden)
         self.mlp = nn.Sequential(
             LorentzFullyConnected(manifold, hidden, mlp_hidden, activation=nn.GELU(), dropout=dropout),
@@ -100,11 +101,12 @@ class LorentzMultiHeadAttention(nn.Module):
                  learn_scale=False, use_haa=False, beta_init_val=None,
                  tau_init=1.0, lambda_init=1.0, learn_lambda=True,
                  B_smooth='softplus', B_softplus_temp=4.0,
-                 use_q_depth_mlp=False):
+                 use_q_depth_mlp=False, disable_B: bool = False):
         super(LorentzMultiHeadAttention, self).__init__()
         # CHANGE-2: aperture-gradient regime selector (relu = legacy, softplus = fixed)
         self.B_smooth = B_smooth
         self.B_softplus_temp = B_softplus_temp
+        self.disable_B = disable_B
 
         self.manifold = manifold
 
@@ -174,6 +176,7 @@ class LorentzMultiHeadAttention(nn.Module):
             self._last_valid_mask = None
             self._last_cls_lorentz = None
             self._last_all_tokens_lorentz = None
+            self._last_score = None
             # P4: origin-only counter (norm_sq_OQ ≤ 1e-6) — distinct failure
             # mode from generic Q-K close-pair masking.
             self._z_origin_count = 0
@@ -403,6 +406,13 @@ class LorentzMultiHeadAttention(nn.Module):
             else:  # legacy relu (backward compatibility)
                 B = torch.sqrt(F.relu(arg_B) + 1e-8)
 
+            # --disable_B: force B to the neutral constant 1.0. Preserves the
+            # entail_pen formula tau*Phi(B + Z - m) in the linear branch for
+            # all Z in [-1, 1]. beta_raw remains a Parameter for checkpoint
+            # compatibility but receives zero gradient.
+            if self.disable_B:
+                B = torch.ones_like(B)
+
             # STEP 3 / CHANGE-4: expose B and Z for DirectionalAngularLoss
             # (uses Z only; B kept for diagnostics).
             self._last_B = B
@@ -434,6 +444,7 @@ class LorentzMultiHeadAttention(nn.Module):
             # --- Score and attention weights ---
             score_matrix = spatial_pen + entail_pen
             score = self.softmax(score_matrix / self.temperature)
+            self._last_score = score.detach()  # [B, h, n_q, n_k] for CLS-row telemetry
 
             if not self.training:
                 frac_near_origin          = (arg_B < 0).float().mean().item()

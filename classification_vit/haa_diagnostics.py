@@ -213,6 +213,51 @@ def log_haa_epoch_metrics(model, epoch: int, writer) -> None:
         mha._z_nearzero_qk_count = 0
         mha._z_origin_count = 0
 
+        # ---- CLS-row-only telemetry (Phase-3-E) ----
+        # CLS is token index 0 in the query dimension. These five metrics
+        # isolate the row that determines classification, since global
+        # metrics are dominated by the 98.5% patch-to-patch pairs.
+        # Guarded against div-by-zero via clamp_min on the valid count.
+        if (getattr(mha, '_last_Z', None) is not None
+                and getattr(mha, '_last_valid_mask', None) is not None
+                and getattr(mha, '_last_B', None) is not None):
+            with torch.no_grad():
+                _Z_cls = mha._last_Z[:, :, 0, :].detach()             # [B, h, n_k]
+                _M_cls = mha._last_valid_mask[:, :, 0, :].detach()    # [B, h, n_k] bool
+                _B_cls = mha._last_B[:, :, 0, :].detach().expand_as(_Z_cls)  # [B, h, n_k]
+
+                _valid_f = _M_cls.float()
+                _n_valid = _valid_f.sum(-1).clamp_min(2.0)            # [B, h] >=2.0
+                _z_sum = (_Z_cls * _valid_f).sum(-1)                  # [B, h]
+                _z_mean_cls = _z_sum / _n_valid                       # [B, h]
+                _z_centered = (_Z_cls - _z_mean_cls.unsqueeze(-1)) * _valid_f
+                _z_var_cls = (_z_centered.pow(2)).sum(-1) / _n_valid  # [B, h]
+                _cone_cls = (((_B_cls + _Z_cls) <= 0).float() * _valid_f).sum(-1) / _n_valid  # [B, h]
+
+                # Guard: if ALL pairs masked in a row, _n_valid was clamped to 2.0
+                # but _z_sum is 0, giving a spurious zero. Mask those rows out of
+                # the batch-mean by reweighting with a row-validity indicator.
+                _row_has_valid = (_M_cls.any(dim=-1)).float()         # [B, h]
+                _row_w = _row_has_valid.sum().clamp_min(1.0)
+
+                _z_mean_cls_avg = (_z_mean_cls * _row_has_valid).sum() / _row_w
+                _z_var_cls_avg  = (_z_var_cls  * _row_has_valid).sum() / _row_w
+                _cone_cls_avg   = (_cone_cls   * _row_has_valid).sum() / _row_w
+
+                log_fn(f"haa/layer_{l}/cls_row_zmean",         _z_mean_cls_avg.item())
+                log_fn(f"haa/layer_{l}/cls_row_zvar",          _z_var_cls_avg.item())
+                log_fn(f"haa/layer_{l}/cls_row_cone_sparsity", _cone_cls_avg.item())
+
+                # Per-row attention entropy: CLS row vs patches.
+                _score = getattr(mha, '_last_score', None)
+                if _score is not None:
+                    _s_cls   = _score[:, :, 0, :]       # [B, h, n_k]
+                    _s_patch = _score[:, :, 1:, :]      # [B, h, n_q-1, n_k]
+                    _H_cls   = -(_s_cls   * _s_cls.clamp_min(1e-12).log()).sum(-1).mean()
+                    _H_patch = -(_s_patch * _s_patch.clamp_min(1e-12).log()).sum(-1).mean()
+                    log_fn(f"haa/layer_{l}/cls_row_entropy",   _H_cls.item())
+                    log_fn(f"haa/layer_{l}/patch_row_entropy", _H_patch.item())
+
     # Stage 2.1 Path B telemetry — CLS depth residual.
     # Lives on the inner ViT (base.encoder for ViTClassifier wrapper).
     cls_resid = getattr(base, 'cls_depth_residual', None)

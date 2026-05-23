@@ -220,6 +220,101 @@ class DirectionalAngularLoss(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# CLS-Row Direction Loss (Phase-3-E)
+# ---------------------------------------------------------------------------
+class CLSRowDirectionLoss(nn.Module):
+    """One-sided hinge on the mean of Z restricted to the CLS row at the
+    deepest HAA layer. Replaces L_angular in Phase-3-E configurations.
+
+    Formula:
+        L = mean_{b,h} ReLU(z_mean_cls[b, h] - z_star)^2
+    where z_mean_cls is the valid-mask-weighted mean of Z over keys at
+    query-index 0 (the CLS row). Achievable target (z_star < 0) makes
+    the loss satisfiable at equilibrium, eliminating the standing
+    unsatisfied gradient of L_angular's band-hinge.
+
+    Mask handling: pairs flagged invalid by mha._last_valid_mask are
+    excluded from the per-row mean. Rows with zero valid pairs are
+    excluded from the batch mean.
+    """
+    def __init__(self,
+                 z_star: float = -0.05,
+                 warmup: int = 15,
+                 ramp: int = 25,
+                 plateau: float = 0.15):
+        super().__init__()
+        self.z_star = z_star
+        self.schedule = RampSchedule(warmup, ramp, plateau)
+
+    def forward(self, model, x, y, device):
+        mha = _get_last_haa_mha(model)
+        if mha is None \
+                or getattr(mha, '_last_Z', None) is None \
+                or getattr(mha, '_last_valid_mask', None) is None:
+            return torch.zeros((), device=device)
+        Z_cls = mha._last_Z[:, :, 0, :]                # [B, h, n_k]
+        M_cls = mha._last_valid_mask[:, :, 0, :]       # [B, h, n_k] bool
+        valid_f = M_cls.float()
+        n_valid = valid_f.sum(-1)                      # [B, h]
+        row_has_valid = (n_valid >= 2.0).float()       # [B, h]
+        if row_has_valid.sum().item() < 1.0:
+            return torch.zeros((), device=device)
+        n_valid_safe = n_valid.clamp_min(2.0)
+        z_mean_cls = (Z_cls * valid_f).sum(-1) / n_valid_safe   # [B, h]
+        hinge = F.relu(z_mean_cls - self.z_star).pow(2)         # [B, h]
+        loss = (hinge * row_has_valid).sum() / row_has_valid.sum().clamp_min(1.0)
+        return loss
+
+
+# ---------------------------------------------------------------------------
+# CLS-Row Variance Loss (Phase-3-E)
+# ---------------------------------------------------------------------------
+class CLSRowVarianceLoss(nn.Module):
+    """One-sided floor on the K-variance of Z restricted to the CLS row.
+
+    Formula:
+        sigma2_cls[b, h] = Var_k[Z(0, k)]  over valid pairs
+        L = ReLU(sigma2_star - mean_{b,h} sigma2_cls)^2
+
+    Direct expression of the discrimination-capacity signal HAA provides
+    at the CLS row. Initial target sigma2_star = 0.05 is a placeholder
+    calibrated from sigma_Z ~ 0.27 in the non-degenerate regime
+    (Var_Z ~ 0.073, target ~70%). Replace with a probe-calibrated value
+    once measured on an existing checkpoint.
+
+    Mask handling: same as CLSRowDirectionLoss.
+    """
+    def __init__(self,
+                 sigma2_star: float = 0.05,
+                 warmup: int = 10,
+                 ramp: int = 25,
+                 plateau: float = 0.5):
+        super().__init__()
+        self.sigma2_star = sigma2_star
+        self.schedule = RampSchedule(warmup, ramp, plateau)
+
+    def forward(self, model, x, y, device):
+        mha = _get_last_haa_mha(model)
+        if mha is None \
+                or getattr(mha, '_last_Z', None) is None \
+                or getattr(mha, '_last_valid_mask', None) is None:
+            return torch.zeros((), device=device)
+        Z_cls = mha._last_Z[:, :, 0, :]                # [B, h, n_k]
+        M_cls = mha._last_valid_mask[:, :, 0, :]       # [B, h, n_k] bool
+        valid_f = M_cls.float()
+        n_valid = valid_f.sum(-1)                      # [B, h]
+        row_has_valid = (n_valid >= 2.0).float()       # [B, h]
+        if row_has_valid.sum().item() < 1.0:
+            return torch.zeros((), device=device)
+        n_valid_safe = n_valid.clamp_min(2.0)
+        z_mean_cls = (Z_cls * valid_f).sum(-1) / n_valid_safe          # [B, h]
+        z_centered = (Z_cls - z_mean_cls.unsqueeze(-1)) * valid_f
+        sigma2_cls = z_centered.pow(2).sum(-1) / n_valid_safe          # [B, h]
+        sigma2_batch = (sigma2_cls * row_has_valid).sum() / row_has_valid.sum().clamp_min(1.0)
+        return F.relu(self.sigma2_star - sigma2_batch).pow(2)
+
+
+# ---------------------------------------------------------------------------
 # Cone Occupancy Loss (Phase 2) — β-detach guarded
 # ---------------------------------------------------------------------------
 class ConeOccupancyLoss(nn.Module):
@@ -643,7 +738,7 @@ def build_aux_losses(args):
     """
     out = {'angular': None, 'hhl': None, 'proto': None,
            'radvar': None, 'betacap': None, 'occ': None,
-           'spread': None}
+           'spread': None, 'cls_dir': None, 'cls_var': None}
 
     gamma_max = float(getattr(args, 'gamma_angular_max', 0.0))
     if gamma_max > 0:
@@ -738,6 +833,24 @@ def build_aux_losses(args):
             warmup=int(getattr(args, 'omega_spread_warmup', 5)),
             ramp=25,
             plateau=omega_spread_max,
+        )
+
+    chi_cls_dir_max = float(getattr(args, 'chi_cls_dir_max', 0.0))
+    if chi_cls_dir_max > 0:
+        out['cls_dir'] = CLSRowDirectionLoss(
+            z_star=float(getattr(args, 'cls_dir_z_star', -0.05)),
+            warmup=int(getattr(args, 'chi_cls_dir_warmup', 15)),
+            ramp=25,
+            plateau=chi_cls_dir_max,
+        )
+
+    psi_cls_var_max = float(getattr(args, 'psi_cls_var_max', 0.0))
+    if psi_cls_var_max > 0:
+        out['cls_var'] = CLSRowVarianceLoss(
+            sigma2_star=float(getattr(args, 'cls_var_sigma2_star', 0.05)),
+            warmup=int(getattr(args, 'psi_cls_var_warmup', 10)),
+            ramp=25,
+            plateau=psi_cls_var_max,
         )
 
     return out

@@ -217,6 +217,23 @@ def getArguments():
     parser.add_argument('--spread_weight_rad', type=float, default=1.0)
     parser.add_argument('--spread_weight_spat', type=float, default=1.0)
 
+    parser.add_argument('--chi_cls_dir_max', type=float, default=0.0,
+        help="Max plateau weight for CLSRowDirectionLoss (Phase-3-E). 0 disables.")
+    parser.add_argument('--chi_cls_dir_warmup', type=int, default=15,
+        help="Epoch at which CLSRowDirectionLoss ramp begins.")
+    parser.add_argument('--cls_dir_z_star', type=float, default=-0.05,
+        help="Target ceiling for CLS-row z_mean in CLSRowDirectionLoss. "
+             "One-sided hinge: zero gradient when z_mean_cls <= z_star.")
+
+    parser.add_argument('--psi_cls_var_max', type=float, default=0.0,
+        help="Max plateau weight for CLSRowVarianceLoss (Phase-3-E). 0 disables.")
+    parser.add_argument('--psi_cls_var_warmup', type=int, default=10,
+        help="Epoch at which CLSRowVarianceLoss ramp begins.")
+    parser.add_argument('--cls_var_sigma2_star', type=float, default=0.05,
+        help="Target floor for CLS-row K-variance of Z. One-sided hinge: "
+             "zero gradient when sigma2_cls >= sigma2_star. Initial value "
+             "0.05 is a placeholder; recalibrate from probe measurement.")
+
     parser.add_argument('--use_cls_depth_residual', action='store_true',
         help="Stage 2.1 Path B: enable per-CLS radial scaling residual "
              "alpha = 0.1 + 1.4*sigmoid(MLP(cls_spatial)) before the classifier. "
@@ -226,6 +243,11 @@ def getArguments():
         help="Step 11: enable in-attention per-head q_depth_mlp that scales CLS-Q "
              "spatial norm before the HAA score is computed. Mutually exclusive "
              "with --use_cls_depth_residual.")
+    parser.add_argument('--disable_B', action='store_true',
+        help="Force the HAA aperture B to the neutral constant 1.0, removing "
+             "the cone-aperture mechanism from the score formula. beta_raw "
+             "remains a Parameter for checkpoint compatibility but receives "
+             "zero gradient. Use to ablate the B/cone machinery cleanly.")
 
     parser.add_argument('--use_proto_softmax', action='store_true',
         help="Replace LorentzMLR with LorentzPrototypeClassifier (Design 2).")

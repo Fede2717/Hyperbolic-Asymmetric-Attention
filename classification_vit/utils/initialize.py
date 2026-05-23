@@ -108,6 +108,7 @@ def select_model(img_dim, num_classes, args):
     enc_args['use_cls_depth_residual'] = getattr(
         args, 'use_cls_depth_residual', False)
     enc_args['use_q_depth_mlp'] = getattr(args, 'use_q_depth_mlp', False)
+    enc_args['disable_B'] = getattr(args, 'disable_B', False)
 
     if (args.encoder_manifold=="lorentz") or (args.encoder_manifold=="poincare"):
         enc_args['learn_k'] = args.learn_k

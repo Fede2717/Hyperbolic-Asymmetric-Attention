@@ -18,6 +18,9 @@ _AUX_FLAGS = [
     ('phi_occ_max',           'occ',      lambda v: f"occ{v:g}"),
     ('omega_spread_max',      'spread',   lambda v: f"spread{v:g}"),
     ('use_proto_softmax',     'protosm',  lambda v: 'protosm'),
+    ('chi_cls_dir_max',       'clsdir',   lambda v: f"clsdir{v:g}"),
+    ('psi_cls_var_max',       'clsvar',   lambda v: f"clsvar{v:g}"),
+    ('disable_B',             'noB',      lambda v: 'noB'),
 ]
 
 
