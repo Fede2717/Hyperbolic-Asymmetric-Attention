@@ -422,8 +422,9 @@ class LorentzMultiHeadAttention(nn.Module):
             if self.training and self.layer_idx in (0, self.max_layer_idx):
                 c_tilde.register_hook(
                     lambda g: self._grad_norms.update({'c_tilde': g.norm().item()}))
-                B.register_hook(
-                    lambda g: self._grad_norms.update({'B': g.norm().item()}))
+                if B.requires_grad:
+                    B.register_hook(
+                        lambda g: self._grad_norms.update({'B': g.norm().item()}))
 
             # --- Spatial penalty (soft-clamped log-cosh, δ₀=15) ---
             lam         = F.softplus(self.lambda_raw)
