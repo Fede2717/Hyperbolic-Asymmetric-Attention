@@ -36,6 +36,32 @@ def pack_split(source_dir: str, lmdb_path: str, map_size_gb: int = 100,
     if not os.path.isdir(source_dir):
         sys.exit(f"FATAL: source_dir does not exist: {source_dir}")
 
+    # Disk-space preflight. Estimate output size from source size + 15% margin.
+    import shutil
+    try:
+        source_bytes = 0
+        for dirpath, _dirs, files in os.walk(source_dir, followlinks=True):
+            for f in files:
+                fp = os.path.join(dirpath, f)
+                try:
+                    source_bytes += os.stat(fp).st_size
+                except OSError:
+                    pass
+    except Exception as e:
+        print(f"[preflight] WARN: could not estimate source size ({e!r}); skipping space check", flush=True)
+        source_bytes = 0
+    if source_bytes > 0:
+        required_bytes = int(source_bytes * 1.15)
+        dest_parent = os.path.dirname(lmdb_path) or "."
+        free_bytes = shutil.disk_usage(dest_parent).free
+        print(f"[preflight] source={source_bytes / (1024**3):.2f} GB, "
+              f"required (×1.15)={required_bytes / (1024**3):.2f} GB, "
+              f"free at {dest_parent}={free_bytes / (1024**3):.2f} GB", flush=True)
+        if free_bytes < required_bytes:
+            sys.exit(f"FATAL: insufficient disk space at {dest_parent}. "
+                     f"Need ~{required_bytes / (1024**3):.1f} GB, have "
+                     f"{free_bytes / (1024**3):.1f} GB free. Free up space or use a different --output-root.")
+
     print(f"[pack] reading ImageFolder at {source_dir} ...", flush=True)
     ds = datasets.ImageFolder(source_dir)
     n = len(ds.samples)
@@ -45,34 +71,54 @@ def pack_split(source_dir: str, lmdb_path: str, map_size_gb: int = 100,
     if os.path.exists(lmdb_path):
         sys.exit(f"FATAL: {lmdb_path} already exists. Remove first or use a different --output-root.")
 
-    env = lmdb.open(lmdb_path,
-                    map_size=map_size_gb * (1024 ** 3),
-                    subdir=True,
-                    meminit=False,
-                    map_async=True,
-                    writemap=True,
-                    sync=False)
-
-    print(f"[pack] writing LMDB at {lmdb_path} ...", flush=True)
-    with env.begin(write=True) as txn:
-        for i, (path, label) in enumerate(ds.samples):
+    import shutil as _shutil_for_rollback  # local alias to avoid name collision
+    _pack_completed = False
+    try:
+        env = lmdb.open(lmdb_path,
+                        map_size=map_size_gb * (1024 ** 3),
+                        subdir=True,
+                        meminit=False,
+                        map_async=True,
+                        writemap=True,
+                        sync=False)
+        try:
+            print(f"[pack] writing LMDB at {lmdb_path} ...", flush=True)
+            with env.begin(write=True) as txn:
+                for i, (path, label) in enumerate(ds.samples):
+                    try:
+                        with open(path, "rb") as fh:
+                            jpeg_bytes = fh.read()
+                    except (OSError, IOError) as e:
+                        raise RuntimeError(f"read failure at sample {i} ({path}): {e!r}")
+                    try:
+                        Image.open(io.BytesIO(jpeg_bytes)).verify()
+                    except Exception as e:
+                        raise RuntimeError(f"sample {i} at {path} is not a valid image: {e!r}")
+                    key = f"{i:010d}".encode("ascii")
+                    val = pickle.dumps({"jpeg_bytes": jpeg_bytes, "label": int(label)})
+                    txn.put(key, val)
+                    if (i + 1) % 50000 == 0:
+                        print(f"[pack]   wrote {i + 1} / {n}", flush=True)
+            env.sync()
+        finally:
+            env.close()
+        _pack_completed = True
+        print(f"[pack] done writing {n} samples", flush=True)
+    except (KeyboardInterrupt, Exception) as e:
+        if not _pack_completed and os.path.isdir(lmdb_path):
+            print(f"[rollback] removing partial LMDB at {lmdb_path} due to: "
+                  f"{type(e).__name__}: {e}", flush=True)
             try:
-                with open(path, "rb") as fh:
-                    jpeg_bytes = fh.read()
-            except (OSError, IOError) as e:
-                sys.exit(f"FATAL at sample {i} ({path}): {e!r}")
-            try:
-                Image.open(io.BytesIO(jpeg_bytes)).verify()
-            except Exception as e:
-                sys.exit(f"FATAL: sample {i} at {path} is not a valid image: {e!r}")
-            key = f"{i:010d}".encode("ascii")
-            val = pickle.dumps({"jpeg_bytes": jpeg_bytes, "label": int(label)})
-            txn.put(key, val)
-            if (i + 1) % 50000 == 0:
-                print(f"[pack]   wrote {i + 1} / {n}", flush=True)
-    env.sync()
-    env.close()
-    print(f"[pack] done writing {n} samples", flush=True)
+                _shutil_for_rollback.rmtree(lmdb_path, ignore_errors=False)
+                # also drop any partial sidecar that may have been left
+                meta_path = lmdb_path + ".meta.json"
+                if os.path.exists(meta_path):
+                    os.remove(meta_path)
+                print(f"[rollback] cleanup successful", flush=True)
+            except Exception as rb_e:
+                print(f"[rollback] WARN: cleanup failed ({rb_e!r}); manual "
+                      f"removal needed at {lmdb_path}", flush=True)
+        raise
 
     meta = {
         "classes": ds.classes,
