@@ -249,6 +249,21 @@ def getArguments():
              "remains a Parameter for checkpoint compatibility but receives "
              "zero gradient. Use to ablate the B/cone machinery cleanly.")
 
+    parser.add_argument('--use_hec_loss', action='store_true',
+                        help='Enable L_HEC entailment cone loss at the HAA layer.')
+    parser.add_argument('--hec_weight', type=float, default=1.0,
+                        help='Weight multiplier on L_HEC. Default 1.0.')
+    parser.add_argument('--hec_margin', type=float, default=0.1,
+                        help='Hinge margin gamma for negative pairs in L_HEC.')
+    parser.add_argument('--hec_negative_mode', type=str, default='naive',
+                        choices=['naive', 'supcon'],
+                        help='Negative selection: naive=all cross-image; supcon=mask same-class.')
+    parser.add_argument('--hec_warmup', type=int, default=5,
+                        help='Linear warmup epochs for L_HEC weight.')
+    parser.add_argument('--hec_head_reduce', type=str, default='mean',
+                        choices=['mean', 'first'],
+                        help='Reduce multi-head into single Q/K: mean or first head.')
+
     parser.add_argument('--use_proto_softmax', action='store_true',
         help="Replace LorentzMLR with LorentzPrototypeClassifier (Design 2).")
     parser.add_argument('--proto_T_init', type=float, default=1.0,
@@ -427,6 +442,36 @@ def main(args):
          if isinstance(m, LorentzMultiHeadAttention) and m.use_haa],
         key=lambda x: x[0]
     )
+
+    # L_HEC entailment cone loss — bespoke aux path (not part of build_aux_losses).
+    # Reads post-W_Q tensors captured by the terminal HAA MHA on every forward.
+    hec_loss_fn = None
+    haa_mha = None
+    if getattr(args, 'use_hec_loss', False):
+        if args.haa_mode == 'baseline' or not getattr(args, 'active_haa_layers', []):
+            raise ValueError("--use_hec_loss requires HAA active (--haa_mode terminal or similar).")
+        if not _haa_layers:
+            raise ValueError("--use_hec_loss set but no HAA-active LorentzMultiHeadAttention found.")
+        import torch.nn.functional as F
+        from hec_loss import HECLoss
+        # Terminal (last) HAA layer's MHA module — same discovery scheme as telemetry.
+        haa_mha = _haa_layers[-1][1]
+
+        def _beta_provider():
+            return F.softplus(haa_mha.beta_raw) if hasattr(haa_mha, 'beta_raw') \
+                else torch.tensor(1.0, device=next(haa_mha.parameters()).device)
+
+        hec_loss_fn = HECLoss(
+            beta_provider=_beta_provider,
+            curvature_K=float(getattr(args, 'encoder_k', 1.0)),
+            margin=float(args.hec_margin),
+            negative_mode=args.hec_negative_mode,
+            head_reduce=args.hec_head_reduce,
+            warmup_epochs=int(args.hec_warmup),
+        ).to(device)
+        print(f"[L_HEC] enabled: negative_mode={args.hec_negative_mode}, "
+              f"margin={args.hec_margin}, warmup={args.hec_warmup}, "
+              f"head_reduce={args.hec_head_reduce}, layer={_haa_layers[-1][0]}", flush=True)
     # Collect per-epoch HAA scalars — use last HAA layer only for CSV
     # (full per-layer data remains in TensorBoard)
     _haa_epoch_data = {
@@ -531,6 +576,13 @@ def main(args):
                 else:
                     _loss_aux = _aux_fn(model, x, y_original, device)
                 loss_total = loss_total + _w * _loss_aux
+
+            # L_HEC entailment cone loss (bespoke aux path). Reads post-W_Q tensors
+            # captured during the model(x) forward above. y_original are the
+            # un-mixed per-image class labels (used by the supcon negative mask).
+            if hec_loss_fn is not None:
+                loss_hec = hec_loss_fn(haa_mha, labels=y_original, epoch=epoch)
+                loss_total = loss_total + args.hec_weight * loss_hec
 
             optimizer.zero_grad()
             loss_total.backward()

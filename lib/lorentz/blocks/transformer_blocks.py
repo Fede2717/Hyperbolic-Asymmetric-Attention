@@ -221,6 +221,7 @@ class LorentzMultiHeadAttention(nn.Module):
             # losses supervise the exact tensor the score formula reads.
             self._last_q_post_wq = None     # [B, heads, n, head_dim+1]
             self._last_k_post_wq = None     # [B, heads, n, head_dim+1]
+            self._last_q_x0_per_token = None  # [B, heads, n] — L_HEC cone-aperture input
 
             self.use_q_depth_mlp = use_q_depth_mlp
 
@@ -317,6 +318,9 @@ class LorentzMultiHeadAttention(nn.Module):
             # (no .detach()) — these tensors feed losses that must drive W_Q.
             self._last_q_post_wq = q
             self._last_k_post_wq = k
+            # L_HEC also needs the per-token Q temporal coord x0 (component 0 of the
+            # Lorentz head_dim+1 axis). Gradient-attached, same as q/k above.
+            self._last_q_x0_per_token = q[..., 0]
             q_time  = q.narrow(-1, 0, 1)
             k_time  = k.narrow(-1, 0, 1)
             q_space = q.narrow(-1, 1, q.shape[-1] - 1)
