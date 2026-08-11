@@ -31,13 +31,13 @@ Before introducing HAA, a layer-wise Phase-0 analysis examined whether the train
 
 Let $Q_i$ be a query, $K_j$ a key, and $O=(\sqrt{K},0,\ldots,0)$ the Lorentz origin for curvature $-1/K$. At $Q_i$, HAA compares the tangent direction toward $K_j$ with the tangent direction back toward $O$:
 
-\[
+```math
 Z(Q_i,K_j)
 =
 \frac{\left\langle \log_{Q_i}(K_j),\log_{Q_i}(O)\right\rangle_{\mathcal L}}
 {\left\|\log_{Q_i}(K_j)\right\|_{\mathcal L}
  \left\|\log_{Q_i}(O)\right\|_{\mathcal L}}.
-\]
+```
 
 A negative value means that the direction from the query toward the key points away from the origin, toward greater radial depth. A positive value points back toward shallower representations.
 
@@ -51,9 +51,9 @@ The entailment cone associated with a query depends on its radial depth. Shallow
 
 A query-key pair satisfies the directional cone condition when
 
-\[
+```math
 B(Q_i)+Z(Q_i,K_j)\leq 0.
-\]
+```
 
 The condition combines angular direction with the query's depth-dependent aperture. For valid non-degenerate pairs, satisfying it also implies the intended ordering in which the key is deeper than the query.
 
@@ -61,12 +61,12 @@ The condition combines angular direction with the query's depth-dependent apertu
 
 The pre-softmax compatibility is
 
-\[
-\operatorname{Score}_{ij}
+```math
+\mathrm{Score}_{ij}
 =
 -\lambda\,\mathcal H\!\left(d_{\mathcal L,\mathrm{soft}}(Q_i,K_j)\right)
 -\tau\,\Phi\!\left(B(Q_i)+Z(Q_i,K_j)\right).
-\]
+```
 
 The first component is a spatial term based on a stabilized Lorentz distance. The second is an entailment term that distinguishes the forward hierarchical direction from the reverse direction. The positive weights $\lambda$ and $\tau$ control their relative influence.
 

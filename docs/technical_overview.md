@@ -48,40 +48,40 @@ In this overview, radial depth is interpreted as a possible general-to-specific 
 
 For curvature $-1/K$, $K>0$, the upper sheet of the Lorentz hyperboloid is
 
-\[
+```math
 \mathcal L_K^n
 =
 \left\{x\in\mathbb R^{n+1}:\langle x,x\rangle_{\mathcal L}=-K,\ x_0>0\right\},
-\]
+```
 
 with Minkowski bilinear form
 
-\[
+```math
 \langle x,y\rangle_{\mathcal L}
 =-x_0y_0+\sum_{r=1}^{n}x_ry_r.
-\]
+```
 
 The Lorentz origin is $O=(\sqrt K,0,\ldots,0)$. The geodesic distance between two points on the manifold is
 
-\[
+```math
 d_{\mathcal L}(x,y)
-=\sqrt K\,\operatorname{arcosh}\!\left(-\frac{\langle x,y\rangle_{\mathcal L}}{K}\right).
-\]
+=\sqrt K\,\mathrm{arcosh}\!\left(-\frac{\langle x,y\rangle_{\mathcal L}}{K}\right).
+```
 
 The radial depth used throughout the study is the distance from the origin,
 
-\[
+```math
 \tilde c(x)=d_{\mathcal L}(O,x)
-=\sqrt K\,\operatorname{arcosh}\!\left(\frac{x_0}{\sqrt K}\right).
-\]
+=\sqrt K\,\mathrm{arcosh}\!\left(\frac{x_0}{\sqrt K}\right).
+```
 
 The tangent space at $x$ is $T_x\mathcal L_K^n=\{v:\langle x,v\rangle_{\mathcal L}=0\}$. Tangent vectors have positive Lorentz norm $\|v\|_{\mathcal L}=\sqrt{\langle v,v\rangle_{\mathcal L}}$. The logarithmic map $\log_x(y)$ gives the tangent direction of the geodesic from $x$ to $y$; the exponential map returns a tangent update to the manifold. These maps make it possible to define angles intrinsically at a query rather than by comparing ambient Euclidean coordinates.
 
 For numerical work, the maintained code frequently uses the unnormalized tangent direction
 
-\[
+```math
 \tilde u_{x\to y}=y+\frac{\langle x,y\rangle_{\mathcal L}}{K}x.
-\]
+```
 
 It is collinear with $\log_x(y)$, so normalization cancels in a cosine. This identity avoids unnecessary inverse hyperbolic functions in the angular branch.
 
@@ -97,17 +97,17 @@ Ganea, Bécigneul, and Hofmann introduced hyperbolic entailment cones as a geome
 
 In the Poincaré ball, their half-aperture is
 
-\[
+```math
 \psi(x)=\arcsin\!\left(\beta\frac{1-\|x\|^2}{\|x\|}\right),
-\]
+```
 
 with a fixed aperture parameter and a radial domain restriction that keeps the expression valid. If $u$ is a proposed parent and $v$ a proposed child, membership compares the angle from $u$ toward $v$ with the forward radial direction. The construction was developed in a setting with observed hierarchical relations and explicit structural constraints.
 
-The Poincaré and Lorentz models are isometric. If $r=\|x\|$ and the corresponding Lorentz depth for $K=1$ is $\tilde c=2\operatorname{atanh}(r)$, then
+The Poincaré and Lorentz models are isometric. If $r=\|x\|$ and the corresponding Lorentz depth for $K=1$ is $\tilde c=2\mathrm{atanh}(r)$, then
 
-\[
+```math
 \frac{1-r^2}{r}=\frac{2}{\sinh\tilde c}.
-\]
+```
 
 The Poincaré aperture therefore becomes $\arcsin(2\beta/\sinh\tilde c)$; the factor of two can be absorbed into the aperture constant. This yields the Lorentz functional form used by HAA.
 
@@ -125,18 +125,18 @@ The project does not claim to introduce entailment cones themselves. Its contrib
 
 Let $Q_i=W_Q(X_i)$ and $K_j=W_K(X_j)$. The current baseline defines
 
-\[
+```math
 d^2_{\mathrm{cL}}(Q_i,K_j)
 =-2K-2\langle Q_i,K_j\rangle_{\mathcal L},
 \qquad
 s_{\mathrm{dist}}(Q_i,K_j)=-a\,d^2_{\mathrm{cL}}(Q_i,K_j),
-\]
+```
 
 where $a$ includes the head scaling and learned attention temperature. This distance-based compatibility is symmetric in its two geometric arguments, so
 
-\[
+```math
 s_{\mathrm{dist}}(q,k)=s_{\mathrm{dist}}(k,q).
-\]
+```
 
 This statement does not imply that the complete token-index logit matrix satisfies $L_{ij}=L_{ji}$. Queries and keys come from distinct projections, and exchanging token indices changes which projection is applied to each token. The relevant limitation is narrower: proximity alone does not explicitly encode the direction of a hierarchical relation.
 
@@ -144,9 +144,9 @@ This statement does not imply that the complete token-index logit matrix satisfi
 
 The design assigns shallow representations the role of general concepts and deep representations the role of specific concepts. For a query $Q_i$ and candidate key $K_j$, the intended forward relation is
 
-\[
+```math
 \tilde c(K_j)>\tilde c(Q_i)
-\]
+```
 
 together with angular alignment away from the origin. Greater depth alone is insufficient because a deep point can lie in an unrelated direction. Angular alignment alone is also insufficient because the permitted angular region should narrow as the query becomes more specific.
 
@@ -186,9 +186,9 @@ Every layer has radial variance far below the M1 threshold. The non-uniformity t
 
 Define $k^*$ as a layer satisfying M1, M2, and M3 jointly. The result is
 
-\[
+```math
 k^*=\mathrm{null}.
-\]
+```
 
 The conclusion is not that hyperbolic hierarchy is impossible, but that its required radial and directional structure does not simply emerge from this baseline and training objective. This motivates terminal placement as the first controlled intervention and motivates auxiliary mechanisms that act separately on orientation, occupancy, and collapse.
 
@@ -202,11 +202,11 @@ For each query $Q_i$, HAA should prefer keys that are spatially compatible and l
 
 Let
 
-\[
+```math
 a=\langle Q_i,K_j\rangle_{\mathcal L},\qquad
 b=\langle O,Q_i\rangle_{\mathcal L},\qquad
 g=\langle O,K_j\rangle_{\mathcal L}.
-\]
+```
 
 Write $\tilde c_i=d_{\mathcal L}(O,Q_i)$ for query depth. All reported experiments use $K=1$, although the conceptual definitions retain $K$. A pair is geometrically valid only when both tangent directions needed by the angular cosine have non-negligible norm.
 
@@ -214,12 +214,12 @@ Write $\tilde c_i=d_{\mathcal L}(O,Q_i)$ for query depth. All reported experimen
 
 The angular signal is the tangent-space cosine at $Q_i$:
 
-\[
+```math
 Z(Q_i,K_j)
 =
 \frac{\langle \log_{Q_i}(K_j),\log_{Q_i}(O)\rangle_{\mathcal L}}
 {\|\log_{Q_i}(K_j)\|_{\mathcal L}\,\|\log_{Q_i}(O)\|_{\mathcal L}}.
-\]
+```
 
 The direction toward the origin is the reverse of the intended descendant direction. Consequently, $Z<0$ means the key lies on the forward side of the query, while $Z>0$ means it points toward the origin or a shallower direction.
 
@@ -229,12 +229,12 @@ The direction toward the origin is the reverse of the intended descendant direct
 
 Using unnormalized tangents gives the equivalent algebraic form
 
-\[
+```math
 Z
 =
 \frac{g+ab/K}
 {\sqrt{a^2/K-K}\,\sqrt{b^2/K-K}}.
-\]
+```
 
 This form is central to the maintained implementation because it avoids explicit log maps for every pair. It also makes the degeneracies visible: the denominator vanishes when the query coincides with the origin or when query and key coincide in the relevant tangent direction.
 
@@ -242,30 +242,30 @@ This form is central to the maintained implementation because it avoids explicit
 
 The conceptual Lorentz half-aperture is
 
-\[
+```math
 \psi(\tilde c_i)
 =\arcsin\!\left(\frac{\beta}{\sinh(\tilde c_i/\sqrt K)}\right),
-\]
+```
 
 with active domain $\sinh(\tilde c_i/\sqrt K)\geq\beta$. The maintained smooth formulation below extends the aperture into the shallow or degenerate regime instead of leaving it undefined.
 
 The quantity used in the score is its cosine,
 
-\[
+```math
 B_{\mathrm{cone}}(Q_i)
 =\cos\psi(\tilde c_i)
 =\sqrt{1-\frac{\beta^2}{\sinh^2(\tilde c_i/\sqrt K)}}.
-\]
+```
 
 Near the origin, the cone approaches a hemisphere and $B$ approaches zero. With increasing depth, $B$ approaches one, so membership requires nearly perfect forward alignment. In contrast with the fixed aperture parameter in the original entailment-cone construction, HAA parameterizes $\beta$ as a positive learnable quantity.
 
 The raw square-root argument can be negative in the shallow regime. The maintained default at $K=1$ uses
 
-\[
+```math
 u_B=1-\frac{\beta^2}{\sinh^2\tilde c_i},\qquad
-B(Q_i)=\sqrt{\frac{1}{s}\operatorname{softplus}(s u_B)+10^{-8}},
+B(Q_i)=\sqrt{\frac{1}{s}\mathrm{softplus}(s u_B)+10^{-8}},
 \quad s=4.
-\]
+```
 
 This smoothly approximates a zero floor while retaining a gradient for $\beta$ where a ReLU floor would be inactive. A legacy `relu` mode remains available. The `--disable_B` ablation fixes $B\equiv1$, which removes the depth-dependent aperture and makes the membership threshold $Z\leq-1$.
 
@@ -273,24 +273,24 @@ This smoothly approximates a zero floor while retaining a gradient for $\beta$ w
 
 Membership is defined by
 
-\[
+```math
 B(Q_i)+Z(Q_i,K_j)\leq0.
-\]
+```
 
 Because $B\geq0$, membership requires $Z\leq-B\leq0$. For a valid non-degenerate pair, $Z<0$ implies
 
-\[
+```math
 d_{\mathcal L}(O,K_j)>d_{\mathcal L}(O,Q_i).
-\]
+```
 
 The result follows from the hyperbolic law of cosines. The numerator sign of $Z$ implies
 
-\[
+```math
 \cosh\!\left(\frac{d(O,K_j)}{\sqrt K}\right)
 >
 \cosh\!\left(\frac{d(Q_i,K_j)}{\sqrt K}\right)
 \cosh\!\left(\frac{d(O,Q_i)}{\sqrt K}\right),
-\]
+```
 
 and the first factor on the right is at least one. Since $\cosh$ is strictly increasing on non-negative arguments, the key must be deeper. Thus the membership rule couples aperture, direction, and depth ordering without a separate norm comparison for every pair.
 
@@ -298,10 +298,10 @@ and the first factor on the right is at least one. Since $\cosh$ is strictly inc
 
 Let $x=B+Z$. The cone boundary is $x=0$. HAA uses a margin-softplus function
 
-\[
-\Phi(x)=\operatorname{softplus}(x-m)-\operatorname{softplus}(-m),
+```math
+\Phi(x)=\mathrm{softplus}(x-m)-\mathrm{softplus}(-m),
 \qquad m=0.1.
-\]
+```
 
 It satisfies $\Phi(0)=0$, is negative for pairs inside the cone, and is positive outside. Since the attention score contains $-\tau\Phi$, valid in-cone pairs receive a bounded reward while violations are reduced smoothly. Its derivative is $\sigma(x-m)$, avoiding a discontinuous hinge at the cone boundary.
 
@@ -309,15 +309,15 @@ It satisfies $\Phi(0)=0$, is negative for pairs inside the cone, and is positive
 
 The spatial branch uses
 
-\[
+```math
 \mathcal H(d)=\log\cosh(d/\delta_0),\qquad \delta_0=15.
-\]
+```
 
 The function is quadratic near zero and approximately linear at large distance. The implementation evaluates it stably as
 
-\[
-t+\operatorname{softplus}(-2t)-\log2,\qquad t=d/\delta_0,
-\]
+```math
+t+\mathrm{softplus}(-2t)-\log2,\qquad t=d/\delta_0,
+```
 
 rather than forming $\cosh(t)$ directly. Before this transformation, distance is smoothly capped by $d_{\mathrm{soft}}=40\tanh(d/40)$.
 
@@ -325,12 +325,12 @@ rather than forming $\cosh(t)$ directly. Before this transformation, distance is
 
 The pre-softmax score is
 
-\[
-\operatorname{Score}_{ij}
+```math
+\mathrm{Score}_{ij}
 =
 -\lambda\,\mathcal H\!\left(d_{\mathcal L,\mathrm{soft}}(Q_i,K_j)\right)
 -\tau\,\Phi\!\left(B(Q_i)+Z(Q_i,K_j)\right).
-\]
+```
 
 The spatial term retains distance sensitivity. The entailment term introduces direction. The score is then divided by the learned attention temperature and passed to softmax in the same attention pipeline as the baseline.
 
@@ -342,11 +342,11 @@ The spatial term retains distance sensitivity. The entailment term introduces di
 
 The aperture and branch weights are kept positive with softplus parameterizations:
 
-\[
-\beta=\operatorname{softplus}(\beta_{\mathrm{raw}}),\quad
-\lambda=\operatorname{softplus}(\lambda_{\mathrm{raw}}),\quad
-\tau=\operatorname{softplus}(\tau_{\mathrm{raw}}).
-\]
+```math
+\beta=\mathrm{softplus}(\beta_{\mathrm{raw}}),\quad
+\lambda=\mathrm{softplus}(\lambda_{\mathrm{raw}}),\quad
+\tau=\mathrm{softplus}(\tau_{\mathrm{raw}}).
+```
 
 Their requested initial values are converted to raw parameters through the inverse softplus. The default HAA presets initialize $\lambda=1$ and $\tau=1$; the aggressive terminal ablation uses $\lambda=0.3$ and $\tau=3$. The spatial weight can be frozen with `--no-learn_lambda`. The attention temperature is a separate learned scalar initialized to one. It scales the combined logit and should not be conflated with the aperture smoothing factor $s=4$.
 
@@ -362,7 +362,7 @@ The maintained implementation applies safeguards at each sensitive operation:
 
 - The angular cosine is clamped to $[-1,1]$. During training, a NaN element is replaced individually with zero; during evaluation, any NaN angular result raises an error rather than silently altering the metric.
 
-- Depth computations clamp $x_0/\sqrt K$ to at least $1+10^{-3}$. The prototype distance uses a stable closed form for $\operatorname{arcosh}(1+u)$.
+- Depth computations clamp $x_0/\sqrt K$ to at least $1+10^{-3}$. The prototype distance uses a stable closed form for $\mathrm{arcosh}(1+u)$.
 
 These are numerical definitions of the maintained score, not additional modeling claims. The standalone Phase-0 utility deliberately retains the historical diagnostic convention discussed in Section 8.4.
 
@@ -378,18 +378,18 @@ Auxiliary weights generally follow a warmup, a 25-epoch linear ramp, and a plate
 
 The angular objective removes the aperture from its optimization path so that it must change $Z$, not inflate $\beta$. Over valid pairs it computes
 
-\[
+```math
 s_{\mathrm{ang}}
-=\operatorname{mean}\left[\sigma\left(4(-Z-0.05)\right)\right]
-\]
+=\mathrm{mean}\left[\sigma\left(4(-Z-0.05)\right)\right]
+```
 
 and applies a squared band hinge,
 
-\[
+```math
 \mathcal L_{\mathrm{ang}}
-=\operatorname{ReLU}(0.55-s_{\mathrm{ang}})^2
-+\operatorname{ReLU}(s_{\mathrm{ang}}-0.85)^2.
-\]
+=\mathrm{ReLU}(0.55-s_{\mathrm{ang}})^2
++\mathrm{ReLU}(s_{\mathrm{ang}}-0.85)^2.
+```
 
 The lower bound encourages a substantial fraction of forward pairs; the upper bound avoids the trivial goal that every pair should occupy the same angular half-space. C11 and C12 show that this signal can drive the final mean $Z$ below zero when combined with prototypes and an appropriate depth control.
 
@@ -399,20 +399,20 @@ Directional or occupancy pressure can be satisfied by compressing the representa
 
 The radial-variance loss reads the post-$W_Q$ query tensor consumed by HAA. It computes the within-image token-depth population variance for each head, averages over images and heads, and applies
 
-\[
+```math
 \mathcal L_{\mathrm{radvar}}
-=\operatorname{ReLU}(0.10-\sigma^2_{\tilde c})^2.
-\]
+=\mathrm{ReLU}(0.10-\sigma^2_{\tilde c})^2.
+```
 
 The one-sided form stops pushing once the floor is reached. Supervising post-projection queries is material because earlier representations can retain variation that the query projection removes.
 
 The spread objective combines the same radial floor with a spatial coefficient-of-variation floor:
 
-\[
+```math
 \mathcal L_{\mathrm{spread}}
-=w_r\operatorname{ReLU}(0.10-\sigma^2_{\tilde c})^2
-+w_s\operatorname{ReLU}(0.30-\operatorname{CV}_{\mathrm{spatial}})^2.
-\]
+=w_r\mathrm{ReLU}(0.10-\sigma^2_{\tilde c})^2
++w_s\mathrm{ReLU}(0.30-\mathrm{CV}_{\mathrm{spatial}})^2.
+```
 
 It was introduced after occupancy-focused runs populated the cone while collapsing radial variation. C17 demonstrates the intended anti-collapse role: it sustains both the occupancy target and radial variance near or above its floor.
 
@@ -420,17 +420,17 @@ It was introduced after occupancy-focused runs populated the cone while collapsi
 
 The soft occupancy surrogate is
 
-\[
+```math
 s_{\mathrm{occ}}
-=\operatorname{mean}\left[\sigma\left(6(-(\operatorname{sg}(B)+Z)-0.05)\right)\right],
-\]
+=\mathrm{mean}\left[\sigma\left(6(-(\mathrm{sg}(B)+Z)-0.05)\right)\right],
+```
 
-where $\operatorname{sg}$ denotes stop-gradient. The loss is
+where $\mathrm{sg}$ denotes stop-gradient. The loss is
 
-\[
+```math
 \mathcal L_{\mathrm{occ}}
-=\operatorname{ReLU}(0.10-s_{\mathrm{occ}})^2.
-\]
+=\mathrm{ReLU}(0.10-s_{\mathrm{occ}})^2.
+```
 
 Detaching $B$ blocks a shortcut in which the optimizer changes the aperture rather than the token geometry. Gradients must flow through $Z$. This protects the intended meaning of occupancy, but does not by itself protect radial spread, which is why the spread objective is needed in C17 and C18.
 
@@ -438,10 +438,10 @@ Detaching $B$ blocks a shortcut in which the optimizer changes the aperture rath
 
 The prototype objective supplies an external class-conditioned geometric anchor. Superclass directions form a simplex equiangular tight frame. Each fine-class direction is placed within a $\pi/8$ angular cap around its CIFAR-100 superclass direction. Superclass prototypes are shallow and fine prototypes are deeper. The CLS representation is pulled toward the frozen prototype for its fine label:
 
-\[
+```math
 \mathcal L_{\mathrm{proto}}
 =\frac{1}{N}\sum_{n=1}^{N}d_{\mathcal L}^2(h_{\mathrm{CLS}}^{(n)},p_{y_n}).
-\]
+```
 
 Under MixUp or CutMix, the same mixing coefficient forms a convex combination of the squared Lorentz distances to the two corresponding frozen prototypes. Because the targets do not move, this objective provides an absolute reference that the batch-derived hierarchy loss cannot. It is central to the C8-C12 metric-learning family and is also reused in the C19-C20 aperture study.
 
@@ -461,10 +461,10 @@ The code additionally contains a beta-cap objective, an experimental hyperbolic 
 
 At an HAA layer, the optional query-depth MLP acts after $W_Q$ and before the HAA score. For the CLS query of each head, it predicts
 
-\[
-\alpha_q=0.1+1.4\,\sigma(\operatorname{MLP}(q_{\mathrm{spatial}})),
+```math
+\alpha_q=0.1+1.4\,\sigma(\mathrm{MLP}(q_{\mathrm{spatial}})),
 \qquad 0.1<\alpha_q<1.5.
-\]
+```
 
 If $q=(q_0,q_s)$, it scales $q_s' = \alpha_q q_s$ and reconstructs $q_0'=\sqrt{K+\|q_s'\|^2}$. The result remains on the Lorentz manifold. Bias initialization gives an initial scale of approximately 0.94, which is near identity. Since the operation occurs inside attention, it changes the query depth seen by $B$, $Z$, and the HAA score without directly rescaling the post-encoder CLS used by the classifier.
 
@@ -472,9 +472,9 @@ If $q=(q_0,q_s)$, it scales $q_s' = \alpha_q q_s$ and reconstructs $q_0'=\sqrt{K
 
 The CLS-depth residual acts after the encoder and before final normalization and classification. It predicts the same bounded form
 
-\[
-\alpha_{\mathrm{CLS}}=0.1+1.4\,\sigma(\operatorname{MLP}(h_{\mathrm{CLS,spatial}}))
-\]
+```math
+\alpha_{\mathrm{CLS}}=0.1+1.4\,\sigma(\mathrm{MLP}(h_{\mathrm{CLS,spatial}}))
+```
 
 and reconstructs the Lorentz time coordinate after scaling the CLS spatial component. Its initial value is also approximately 0.94, near identity. It gives prototype and CLS-focused objectives a direct radial degree of freedom at the representation consumed by the classification head.
 
