@@ -31,8 +31,6 @@ from lib.utils.losses import LabelSmoothingCrossEntropy
 from haa_diagnostics import log_haa_epoch_metrics, log_haa_deep_diagnostics
 from haa_auxiliary_loss import build_aux_losses
 
-os.environ['WANDB_DIR'] = '/media/hdd/usr/forner/wandb/'
-
 DEEP_EPOCHS = frozenset({1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90})
 
 
@@ -61,12 +59,14 @@ def getArguments():
     parser.add_argument('--exp_name', default="test", type=str,
                         help="Name of the experiment.")
     parser.add_argument('--output_dir', default=None, type=str,
-                        help="Path for output files (relative to working directory).")
+                        help="Path for output files. Relative paths are resolved from the current working directory.")
+    parser.add_argument('--log_dir', default="runs", type=str,
+                        help="Base directory for TensorBoard logs. Relative paths are resolved from the current working directory.")
 
     # General settings
     parser.add_argument('--device', default="cuda:0",
                         type=lambda s: [str(item) for item in s.replace(' ', '').split(',')],
-                        help="List of devices split by comma (e.g. cuda:0,cuda:1), can also be a single device or 'cpu')")
+                        help="CUDA device or comma-separated CUDA devices (e.g. cuda:0 or cuda:0,cuda:1). CPU execution is not supported.")
     parser.add_argument('--dtype', default='float32', type=str, choices=["float32", "float64"],
                         help="Set floating point precision.")
     parser.add_argument('--seed', default=1, type=int,
@@ -134,6 +134,10 @@ def getArguments():
     parser.add_argument('--dataset', default='CIFAR-100', type=str,
                         choices=["CIFAR-10", "CIFAR-100", "Tiny-ImageNet", "ImageNet", "tieredImageNet"],
                         help="Select a dataset.")
+    parser.add_argument('--data_root', default='data', type=str,
+                        help="Root directory for CIFAR data or the unfinished tieredImageNet ImageFolder layout. Relative paths are resolved from the current working directory.")
+    parser.add_argument('--tiered_lmdb_root', default=None, type=str,
+                        help="Optional root containing tieredImageNet train/val/test LMDB files. Relative paths are resolved from the current working directory.")
 
     # HAA ablation mode
     parser.add_argument('--haa_mode', default='baseline', type=str,
@@ -151,7 +155,8 @@ def getArguments():
              "Pass --no-learn_lambda to freeze the spatial penalty parameter "
              "at its init value (requires_grad=False) for ablation studies.")
     parser.add_argument('--deep_diagnostics', action='store_true',
-        help="Run extra val pass at epochs {1,5,10,20,final} for geometric diagnostics. "
+        help="Run an extra evaluation-loader pass at epochs "
+             "{1,5,10,20,30,40,50,60,70,80,90,final} for geometric diagnostics. "
              "Disable for RNG-clean training runs.")
     parser.add_argument('--eval_only', action='store_true',
         help="Skip training; load checkpoint and run a single validation pass + HAA telemetry.")
@@ -241,8 +246,7 @@ def getArguments():
              "operate on an actual depth degree of freedom.")
     parser.add_argument('--use_q_depth_mlp', action='store_true',
         help="Step 11: enable in-attention per-head q_depth_mlp that scales CLS-Q "
-             "spatial norm before the HAA score is computed. Mutually exclusive "
-             "with --use_cls_depth_residual.")
+             "spatial norm before the HAA score is computed.")
     parser.add_argument('--disable_B', action='store_true',
         help="Force the HAA aperture B to the neutral constant 1.0, removing "
              "the cone-aperture mechanism from the score formula. beta_raw "
@@ -284,6 +288,21 @@ def getArguments():
             DeprecationWarning, stacklevel=2)
         args.gamma_angular_warmup = args.gamma_warmup
 
+    if args.eval_only and args.load_checkpoint is None:
+        parser.error("--eval_only requires --load_checkpoint PATH; evaluation without trained weights is not supported.")
+
+    for requested_device in args.device:
+        if not requested_device.startswith('cuda:'):
+            parser.error(
+                f"Unsupported device '{requested_device}'. This training entry point requires CUDA devices such as cuda:0.")
+        try:
+            device_idx = int(requested_device.split(':', 1)[1])
+        except (TypeError, ValueError):
+            parser.error(
+                f"Invalid CUDA device '{requested_device}'. Use cuda:N or a comma-separated list such as cuda:0,cuda:1.")
+        if device_idx < 0:
+            parser.error(f"Invalid CUDA device index in '{requested_device}'; CUDA indices must be non-negative.")
+
     return args
 
 def main(args):
@@ -316,6 +335,19 @@ def main(args):
         if args.haa_lambda_init == 1.0:
             args.haa_lambda_init = 0.3
 
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is required by the supported training path, but no CUDA device is available.")
+
+    device_ids = [int(d.split(':', 1)[1]) for d in args.device]
+    available_device_count = torch.cuda.device_count()
+    unavailable_device_ids = [idx for idx in device_ids
+                              if idx >= available_device_count]
+    if unavailable_device_ids:
+        raise RuntimeError(
+            f"Requested CUDA device indices {unavailable_device_ids}, but only "
+            f"{available_device_count} CUDA device(s) are visible.")
+
     device = args.device[0]
     torch.cuda.set_device(device)
     torch.cuda.empty_cache()
@@ -345,8 +377,6 @@ def main(args):
         print("Loading model checkpoint from {}".format(args.load_checkpoint))
         model, optimizer, lr_scheduler, start_epoch = load_checkpoint(model, optimizer, lr_scheduler, args)
 
-    # model = DataParallel(model, device_ids=args.device)
-    device_ids = [int(d.replace('cuda:', '')) for d in args.device]
     model = DataParallel(model, device_ids=device_ids)
 
     if args.compile:
@@ -373,7 +403,7 @@ def main(args):
     # Initialize TensorBoard writer
     # Set up TensorBoard logging directory with a unique name for each experiment
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_dir = os.path.join("/media/hdd/usr/forner/logs/", _run_exp_name + "_" + timestamp)
+    log_dir = os.path.join(args.log_dir, _run_exp_name + "_" + timestamp)
     writer = SummaryWriter(log_dir=log_dir)
 
 
@@ -890,6 +920,6 @@ if __name__ == '__main__':
     if args.output_dir is not None:
         if not os.path.exists(args.output_dir):
             print("Create missing output directory...")
-            os.mkdir(args.output_dir)
+        os.makedirs(args.output_dir, exist_ok=True)
 
     main(args)

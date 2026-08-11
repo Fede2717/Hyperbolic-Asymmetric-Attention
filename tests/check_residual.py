@@ -1,14 +1,13 @@
 """Manifold-constraint validation for CLSDepthResidual.
 
 Verifies:
-  1. alpha = 1.0 exactly at init (zero-bias zero-weight final layer).
+  1. alpha = 1.0 exactly at init (zero-weight final layer with calibrated bias).
   2. Output equals input at init (no-op residual).
   3. Lorentz constraint <x,x>_L = -K preserved after a perturbed forward.
-  4. alpha stays within (0.2, 1.8) bounds.
+  4. alpha stays within the current (0.1, 1.5) bounds.
   5. Gradient flows through alpha (telemetry hook fires).
 
-This file is run manually by the human after training-environment setup.
-The Claude Code agent that creates this file MUST NOT execute it.
+Run manually as a lightweight validation after training-environment setup.
 """
 import os
 import sys
@@ -54,9 +53,9 @@ def main():
     assert (inner_out + K).abs().max() < 1e-4, \
         f"output off-manifold; max violation {(inner_out + K).abs().max().item()}"
 
-    # Alpha bounded in (0.2, 1.8).
+    # Alpha bounded in the current implementation's (0.1, 1.5) range.
     a = resid._last_alpha
-    assert (a > 0.2).all() and (a < 1.8).all(), \
+    assert (a > 0.1).all() and (a < 1.5).all(), \
         f"alpha out of bounds: min={a.min()}, max={a.max()}"
 
     # Gradient flows through alpha.

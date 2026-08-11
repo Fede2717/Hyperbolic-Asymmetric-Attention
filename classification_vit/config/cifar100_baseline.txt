@@ -1,0 +1,35 @@
+# python classification_vit/train.py -c classification_vit/config/cifar100_baseline.txt
+# Current CIFAR-100 HexFormer baseline configuration.
+
+# Output settings
+exp_name = cifar100_baseline
+output_dir = output
+log_dir = runs
+
+# General settings
+device = cuda:0
+dtype = float32
+seed = 1
+histogram = False
+
+# Training hyperparameters
+num_epochs = 100
+warmup = 0
+batch_size = 128
+lr = 4.35e-3
+weight_decay = 5e-2
+optimizer = RiemannianAdamW
+batch_size_test = 512
+
+# Tiny HexFormer
+patch_size = 4
+model_size = tiny
+encoder_manifold = lorentz
+decoder_manifold = lorentz
+
+# Dataset
+dataset = CIFAR-100
+data_root = data
+
+# Attention configuration
+haa_mode = baseline

@@ -27,8 +27,11 @@ def attach_hyperbolic_prototypes(model, args):
         return
     from haa_auxiliary_loss import build_hyperbolic_prototypes
     from hierarchy_loader import load_hierarchy
+    dataset_name = str(getattr(args, 'dataset', 'CIFAR-100'))
+    hierarchy_path = (os.path.join(args.data_root, 'hierarchy.json')
+                      if dataset_name == 'tieredImageNet' else None)
     FINE_TO_SUPER, NUM_FINE, NUM_SUPER = load_hierarchy(
-        str(getattr(args, 'dataset', 'CIFAR-100')))
+        dataset_name, hierarchy_path=hierarchy_path)
 
     lut = torch.zeros(NUM_FINE, dtype=torch.long)
     for f, s in FINE_TO_SUPER.items():
@@ -82,9 +85,6 @@ def load_model_checkpoint(model, checkpoint_path):
 def select_model(img_dim, num_classes, args):
     """ Selects and sets up an available model and returns it. """
 
-    #if getattr(args, 'use_q_depth_mlp', False) and getattr(args, 'use_cls_depth_residual', False):
-    #    raise RuntimeError("--use_q_depth_mlp and --use_cls_depth_residual are mutually exclusive.")
-
     enc_args = {
         'num_layers' : args.num_layers,
         'img_dim' : img_dim,
@@ -127,6 +127,9 @@ def select_model(img_dim, num_classes, args):
         'd_f_mid'         : float(getattr(args, 'd_f_mid', 1.175)),
         'T_init'          : float(getattr(args, 'proto_T_init', 1.0)),
         'dataset_name'    : str(getattr(args, 'dataset', 'CIFAR-100')),
+        'hierarchy_path'  : (os.path.join(args.data_root, 'hierarchy.json')
+                             if str(getattr(args, 'dataset', 'CIFAR-100')) == 'tieredImageNet'
+                             else None),
     }
 
     model = ViTClassifier(
@@ -261,10 +264,10 @@ def select_dataset(args, validation_split=False):
             transforms.Normalize(mean, std),
         ])
 
-        train_set = datasets.CIFAR10('/media/pinas/datasets/', train=True, download=True, transform=train_transform)
+        train_set = datasets.CIFAR10(args.data_root, train=True, download=True, transform=train_transform)
         if validation_split:
             train_set, val_set = torch.utils.data.random_split(train_set, [40000, 10000], generator=torch.Generator().manual_seed(1))
-        test_set = datasets.CIFAR10('/media/pinas/datasets/', train=False, download=False, transform=test_transform)
+        test_set = datasets.CIFAR10(args.data_root, train=False, download=False, transform=test_transform)
 
         img_dim = [3, 32, 32]
         num_classes = 10
@@ -287,10 +290,10 @@ def select_dataset(args, validation_split=False):
             transforms.Normalize(mean, std),
         ])
 
-        train_set = datasets.CIFAR100('/media/pinas/datasets/', train=True, download=True, transform=train_transform)
+        train_set = datasets.CIFAR100(args.data_root, train=True, download=True, transform=train_transform)
         if validation_split:
             train_set, val_set = torch.utils.data.random_split(train_set, [40000, 10000], generator=torch.Generator().manual_seed(1))
-        test_set = datasets.CIFAR100('/media/pinas/datasets/', train=False, download=False, transform=test_transform)
+        test_set = datasets.CIFAR100(args.data_root, train=False, download=False, transform=test_transform)
 
         img_dim = [3, 32, 32]
         num_classes = 100
@@ -326,10 +329,11 @@ def select_dataset(args, validation_split=False):
         num_classes = 200
 
     elif args.dataset == 'tieredImageNet':
-        root_dir = "/media/hdd/usr/forner/tieredImageNet/"
-        train_dir = root_dir + "train"
-        val_dir   = root_dir + "val"
-        test_dir  = root_dir + "test" if os.path.isdir(root_dir + "test") else val_dir
+        root_dir = args.data_root
+        train_dir = os.path.join(root_dir, "train")
+        val_dir   = os.path.join(root_dir, "val")
+        candidate_test_dir = os.path.join(root_dir, "test")
+        test_dir  = candidate_test_dir if os.path.isdir(candidate_test_dir) else val_dir
 
         # tieredImageNet native resolution is 84x84.
         mean = (0.485, 0.456, 0.406)
@@ -352,14 +356,17 @@ def select_dataset(args, validation_split=False):
 
         # If LMDB files exist locally, use the LMDB-backed dataset to skip
         # network I/O. Otherwise fall back to ImageFolder (current behavior).
-        _lmdb_root = "/media/hdd/usr/forner/tieredImageNet_lmdb/"
-        _train_lmdb = os.path.join(_lmdb_root, "train.lmdb")
-        _val_lmdb   = os.path.join(_lmdb_root, "val.lmdb")
-        _test_lmdb  = os.path.join(_lmdb_root, "test.lmdb")
-        _use_lmdb = (os.path.isdir(_train_lmdb)
-                     and os.path.isfile(_train_lmdb + ".meta.json")
-                     and os.path.isdir(_val_lmdb)
-                     and os.path.isfile(_val_lmdb + ".meta.json"))
+        _lmdb_root = getattr(args, 'tiered_lmdb_root', None)
+        if _lmdb_root:
+            _train_lmdb = os.path.join(_lmdb_root, "train.lmdb")
+            _val_lmdb   = os.path.join(_lmdb_root, "val.lmdb")
+            _test_lmdb  = os.path.join(_lmdb_root, "test.lmdb")
+            _use_lmdb = (os.path.isdir(_train_lmdb)
+                         and os.path.isfile(_train_lmdb + ".meta.json")
+                         and os.path.isdir(_val_lmdb)
+                         and os.path.isfile(_val_lmdb + ".meta.json"))
+        else:
+            _use_lmdb = False
 
         if _use_lmdb:
             try:
@@ -377,8 +384,10 @@ def select_dataset(args, validation_split=False):
             train_set = datasets.ImageFolder(train_dir, train_transform)
             val_set   = datasets.ImageFolder(val_dir,   test_transform)
             test_set  = datasets.ImageFolder(test_dir,  test_transform)
+            _lmdb_note = (f"LMDB not found at {_lmdb_root}"
+                          if _lmdb_root else "LMDB root not configured")
             print(f"[DATASET] tieredImageNet via ImageFolder at {root_dir} "
-                  f"(LMDB not found at {_lmdb_root})", flush=True)
+                  f"({_lmdb_note})", flush=True)
 
         img_dim = [3, 84, 84]
         num_classes = len(train_set.classes)

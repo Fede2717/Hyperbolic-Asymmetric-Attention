@@ -1,6 +1,6 @@
 """Pack tieredImageNet ImageFolder layout into per-split LMDB files.
 
-Run on Odin after the ImageFolder symlink layout already exists at
+Run after the ImageFolder symlink layout already exists at
 --source-root. Writes:
   --output-root/train.lmdb/            (LMDB env directory)
   --output-root/train.lmdb.meta.json   (sidecar with classes etc.)
@@ -163,8 +163,10 @@ def pack_split(source_dir: str, lmdb_path: str, map_size_gb: int = 100,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source-root", default="/media/hdd/usr/forner/tieredImageNet/")
-    ap.add_argument("--output-root", default="/media/hdd/usr/forner/tieredImageNet_lmdb/")
+    ap.add_argument("--source-root", required=True,
+                    help="Existing tieredImageNet ImageFolder root.")
+    ap.add_argument("--output-root", required=True,
+                    help="Destination root for per-split LMDB files.")
     ap.add_argument("--splits", nargs="+", default=["train", "val", "test"])
     ap.add_argument("--map-size-gb", type=int, default=100,
                     help="LMDB map_size in GB. Must exceed final on-disk size.")

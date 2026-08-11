@@ -35,9 +35,11 @@ class LorentzPrototypeClassifier(nn.Module):
                  d_s: float = 0.3,
                  d_f_mid: float = 1.175,
                  T_init: float = 1.0,
-                 dataset_name: str = 'CIFAR-100'):
+                 dataset_name: str = 'CIFAR-100',
+                 hierarchy_path: str = None):
         super().__init__()
-        FINE_TO_SUPER, NUM_FINE, NUM_SUPER = load_hierarchy(dataset_name)
+        FINE_TO_SUPER, NUM_FINE, NUM_SUPER = load_hierarchy(
+            dataset_name, hierarchy_path=hierarchy_path)
         if num_classes != NUM_FINE:
             raise NotImplementedError(
                 f"LorentzPrototypeClassifier expects num_classes == NUM_FINE "

@@ -7,13 +7,11 @@ All tensor interception is done via PyTorch forward hooks registered from
 this external script; no source file is modified.
 
 Run from the HexFormer project root:
-    CUDA_VISIBLE_DEVICES=0 python run_phase_0.py
+    python run_phase_0.py --checkpoint path/to/checkpoint.pth
 """
 
-# CUDA_VISIBLE_DEVICES must be set before torch is imported.
+import argparse
 import os
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
-
 import sys
 import json
 import math
@@ -22,7 +20,7 @@ import torch
 import torchvision.transforms as T
 import torchvision.datasets as tvd
 import matplotlib
-matplotlib.use("Agg")   # headless — no display needed on Odin
+matplotlib.use("Agg")   # headless; no display required
 import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------------
@@ -36,15 +34,39 @@ from utils.initialize import select_model                                      #
 from lib.lorentz.blocks.transformer_blocks import LorentzMultiHeadAttention   # noqa: E402
 
 # ===========================================================================
-# Configuration
+# Configuration and command-line interface
 # ===========================================================================
 
-CHECKPOINT_PATH  = "/media/hdd/usr/forner/checkpoints/best_Hexformer_Tiny-ViT_CIFAR-100.pth"
-OUTPUT_JSON      = "/media/hdd/usr/forner/output/phase0_diagnostics.json"
-OUTPUT_PNG       = "/media/hdd/usr/forner/output/phase0_curves.png"
-DEVICE           = "cuda:0"
-DATASET_ROOT     = "/media/pinas/datasets/"
 VAL_BATCH_SIZE   = 512
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run the historical Phase-0 geometric diagnostics on a CIFAR-100 checkpoint.")
+    parser.add_argument(
+        "--checkpoint", required=True,
+        help="Checkpoint produced by the training entry point. No checkpoint is bundled with the repository.")
+    parser.add_argument(
+        "--data-root", default="data",
+        help="CIFAR-100 root. Relative paths are resolved from the current working directory.")
+    parser.add_argument(
+        "--output-dir", default=os.path.join("output", "phase0"),
+        help="Directory for diagnostic JSON and PNG files. Relative paths are resolved from the current working directory.")
+    parser.add_argument(
+        "--device", default="cuda:0",
+        help="CUDA device in cuda:N form. CPU execution is not supported.")
+    args = parser.parse_args()
+
+    if not args.device.startswith("cuda:"):
+        parser.error("--device must be a CUDA device in cuda:N form; CPU execution is not supported.")
+    try:
+        device_idx = int(args.device.split(":", 1)[1])
+    except (TypeError, ValueError):
+        parser.error("--device must be a CUDA device in cuda:N form, for example cuda:0.")
+    if device_idx < 0:
+        parser.error("--device CUDA index must be non-negative.")
+
+    return args
 
 # Histogram grid for M2
 HIST_BINS        = 50
@@ -452,7 +474,7 @@ def load_model_and_K(
     return model, K, ckpt_args
 
 
-def build_val_loader() -> torch.utils.data.DataLoader:
+def build_val_loader(data_root: str) -> torch.utils.data.DataLoader:
     """
     Return a DataLoader over the CIFAR-100 test split (10 000 images).
     Uses the same normalisation parameters as initialize.py.
@@ -463,7 +485,7 @@ def build_val_loader() -> torch.utils.data.DataLoader:
         T.ToTensor(),
         T.Normalize(mean, std),
     ])
-    ds = tvd.CIFAR100(DATASET_ROOT, train=False, download=False, transform=tf)
+    ds = tvd.CIFAR100(data_root, train=False, download=False, transform=tf)
     return torch.utils.data.DataLoader(
         ds,
         batch_size=VAL_BATCH_SIZE,
@@ -626,11 +648,28 @@ def save_figure(results: dict, n_layers: int, path: str) -> None:
 # ===========================================================================
 
 def main() -> None:
-    torch.cuda.set_device(DEVICE)
+    args = parse_args()
+    device_idx = int(args.device.split(":", 1)[1])
+
+    if not os.path.isfile(args.checkpoint):
+        raise FileNotFoundError(
+            f"Checkpoint not found: {args.checkpoint}. Supply an existing file with --checkpoint.")
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is required by run_phase_0.py, but no CUDA device is available.")
+    if device_idx >= torch.cuda.device_count():
+        raise RuntimeError(
+            f"Requested {args.device}, but only {torch.cuda.device_count()} CUDA "
+            "device(s) are visible.")
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    output_json = os.path.join(args.output_dir, "phase0_diagnostics.json")
+    output_png = os.path.join(args.output_dir, "phase0_curves.png")
+    torch.cuda.set_device(args.device)
 
     # ── Load model ──────────────────────────────────────────────────────────
-    print(f"[phase0] loading checkpoint: {CHECKPOINT_PATH}")
-    model, K, ckpt_args = load_model_and_K(CHECKPOINT_PATH, DEVICE)
+    print(f"[phase0] loading checkpoint: {args.checkpoint}")
+    model, K, ckpt_args = load_model_and_K(args.checkpoint, args.device)
     print(f"[phase0] manifold curvature K = {K:.6f}")
 
     # ── Discover LorentzMultiHeadAttention layers in forward order ───────────
@@ -660,16 +699,16 @@ def main() -> None:
           f"({n_layers} layers × 2 = {n_layers * 2} expected)")
 
     # ── Validation loader ────────────────────────────────────────────────────
-    val_loader = build_val_loader()
+    val_loader = build_val_loader(args.data_root)
     n_batches  = len(val_loader)
     print(f"[phase0] val batches: {n_batches}  "
-          f"(batch_size={VAL_BATCH_SIZE}, dataset={DATASET_ROOT})")
+          f"(batch_size={VAL_BATCH_SIZE}, dataset={args.data_root})")
 
     # ── Inference loop  (single torch.no_grad() context, model.eval()) ───────
     print("[phase0] running inference...")
     with torch.no_grad():
         for batch_idx, (x, _) in enumerate(val_loader):
-            x = x.to(DEVICE)
+            x = x.to(args.device)
             _ = model(x)   # forward hooks fire here, aggregators update in-place
             del x
             # Empty cache once per batch to release any hook-side allocations.
@@ -715,13 +754,12 @@ def main() -> None:
     print(f"\n[phase0] k_star = {results['k_star']}")
 
     # ── Write JSON ────────────────────────────────────────────────────────────
-    os.makedirs(os.path.dirname(OUTPUT_JSON), exist_ok=True)
-    with open(OUTPUT_JSON, "w") as fh:
+    with open(output_json, "w") as fh:
         json.dump(results, fh, indent=2)
-    print(f"[phase0] results written → {OUTPUT_JSON}")
+    print(f"[phase0] results written → {output_json}")
 
     # ── Save figure ───────────────────────────────────────────────────────────
-    save_figure(results, n_layers, OUTPUT_PNG)
+    save_figure(results, n_layers, output_png)
 
 
 if __name__ == "__main__":

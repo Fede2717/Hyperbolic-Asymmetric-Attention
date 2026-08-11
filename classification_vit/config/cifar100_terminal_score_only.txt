@@ -1,0 +1,41 @@
+# python classification_vit/train.py -c classification_vit/config/cifar100_terminal_score_only.txt
+# Current terminal HAA score-only configuration; not an exact reproduction of thesis C3.
+
+# Output settings
+exp_name = cifar100_terminal_score_only
+output_dir = output
+log_dir = runs
+
+# General settings
+device = cuda:0
+dtype = float32
+seed = 1
+histogram = False
+
+# Training hyperparameters
+num_epochs = 100
+warmup = 0
+batch_size = 128
+lr = 4.35e-3
+weight_decay = 5e-2
+optimizer = RiemannianAdamW
+batch_size_test = 512
+
+# Tiny HexFormer
+patch_size = 4
+model_size = tiny
+encoder_manifold = lorentz
+decoder_manifold = lorentz
+
+# Dataset
+dataset = CIFAR-100
+data_root = data
+
+# Current terminal HAA score
+haa_mode = terminal
+haa_tau_init = 1.0
+haa_lambda_init = 1.0
+learn_lambda = True
+B_smooth = softplus
+B_softplus_temp = 4.0
+beta_init_override = 1.0

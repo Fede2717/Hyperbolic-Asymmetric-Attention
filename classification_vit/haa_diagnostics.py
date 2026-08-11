@@ -4,7 +4,8 @@ haa_diagnostics.py — Per-layer HAA telemetry and deep geometric diagnostics.
 Two entry points:
   log_haa_epoch_metrics     — called every validation epoch; reads stored
                               telemetry fields from mha attributes (no extra pass).
-  log_haa_deep_diagnostics  — called at epochs {1,5,10,20,final}; registers
+  log_haa_deep_diagnostics  — called at epochs
+                              {1,5,10,20,30,40,50,60,70,80,90,final}; registers
                               temporary hooks and runs one full val pass.
 """
 

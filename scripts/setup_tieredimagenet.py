@@ -33,8 +33,10 @@ def load_splits():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--imagenet-root", default="/media/pinas/datasets/imagenet_zeus")
-    ap.add_argument("--output-root",   default="/media/pinas/datasets/tieredImageNet")
+    ap.add_argument("--imagenet-root", required=True,
+                    help="Existing ILSVRC-12 training root containing WNID directories.")
+    ap.add_argument("--output-root", required=True,
+                    help="Destination for the generated tieredImageNet layout and metadata.")
     ap.add_argument("--use-val-as-test", action="store_true",
                     help="Mirror val/ to test/ (Tiny-ImageNet convention).")
     ap.add_argument("--dry-run", action="store_true")

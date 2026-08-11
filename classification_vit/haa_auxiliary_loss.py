@@ -1,8 +1,8 @@
 """Auxiliary losses for breaking the HAA geometric deadlock.
 
-Implements the Loss Factory pattern of Master_Execution_Pipeline.md Rule 2.
-All auxiliary loss logic is contained in this module; the training loop
-only calls ``build_aux_losses(args)`` once and iterates the returned dict.
+All auxiliary loss logic is contained in this module; enabled terms are
+constructed once by ``build_aux_losses(args)`` and disabled terms return
+``None`` for the training loop to skip.
 
 Modules:
     RampSchedule              — warmup/ramp/plateau weight scheduler
@@ -377,9 +377,11 @@ class HyperbolicHierarchyLoss(nn.Module):
                  ema: float = 0.9,
                  warmup: int = 5,
                  ramp: int = 25,
-                 plateau: float = 0.5):
+                 plateau: float = 0.5,
+                 hierarchy_path: str = None):
         super().__init__()
-        FINE_TO_SUPER, NUM_FINE, NUM_SUPER = load_hierarchy(dataset_name)
+        FINE_TO_SUPER, NUM_FINE, NUM_SUPER = load_hierarchy(
+            dataset_name, hierarchy_path=hierarchy_path)
         self.NUM_SUPER = NUM_SUPER
         self.NUM_FINE = NUM_FINE
         self.K = K
@@ -739,6 +741,9 @@ def build_aux_losses(args):
     out = {'angular': None, 'hhl': None, 'proto': None,
            'radvar': None, 'betacap': None, 'occ': None,
            'spread': None, 'cls_dir': None, 'cls_var': None}
+    dataset_name = str(getattr(args, 'dataset', 'CIFAR-100'))
+    hierarchy_path = (_os.path.join(args.data_root, 'hierarchy.json')
+                      if dataset_name == 'tieredImageNet' else None)
 
     gamma_max = float(getattr(args, 'gamma_angular_max', 0.0))
     if gamma_max > 0:
@@ -753,10 +758,11 @@ def build_aux_losses(args):
         K = float(getattr(args, 'encoder_k', 1.0))
         out['hhl'] = HyperbolicHierarchyLoss(
             K=K,
-            dataset_name=str(getattr(args, 'dataset', 'CIFAR-100')),
+            dataset_name=dataset_name,
             warmup=int(getattr(args, 'eta_warmup', 5)),
             ramp=25,
             plateau=eta_max,
+            hierarchy_path=hierarchy_path,
         )
 
     eta_proto_max = float(getattr(args, 'eta_proto_max', 0.0))
@@ -776,7 +782,7 @@ def build_aux_losses(args):
                     "L_proto enabled but args.hyperbolic_prototypes not set. "
                     "Build prototypes in the model setup before constructing aux losses.")
             _, _NUM_FINE, _NUM_SUPER = load_hierarchy(
-                str(getattr(args, 'dataset', 'CIFAR-100')))
+                dataset_name, hierarchy_path=hierarchy_path)
             out['proto'] = HyperbolicPrototypeLoss(
                 K=K,
                 prototypes_lorentz=prototypes,

@@ -68,6 +68,7 @@ class ViTClassifier(nn.Module):
                     d_f_mid=float(dec_kwargs.get('d_f_mid', 1.175)),
                     T_init=float(dec_kwargs.get('T_init', 1.0)),
                     dataset_name=str(dec_kwargs.get('dataset_name', 'CIFAR-100')),
+                    hierarchy_path=dec_kwargs.get('hierarchy_path'),
                 )
             else:
                 # PHASE2: legacy LorentzMLR decoder; preserved for ablation comparisons.

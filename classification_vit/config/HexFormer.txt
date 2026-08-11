@@ -2,7 +2,8 @@
 
 # Output settings
 exp_name = Hexformer_Tiny-ViT_CIFAR-100
-output_dir = /media/hdd/usr/forner/checkpoints/
+output_dir = output
+log_dir = runs
 
 # General settings
 device = cuda:0
@@ -36,3 +37,4 @@ decoder_manifold = lorentz
 
 # Dataset settings
 dataset = CIFAR-100 # CIFAR-10 or Tiny-ImageNet
+data_root = data
